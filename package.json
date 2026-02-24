@@ -18,11 +18,6 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:minimalArduino.autoDetect",
-    "onCommand:minimalArduino.compile",
-    "onCommand:minimalArduino.upload",
-    "onCommand:minimalArduino.serialMonitor",
-    "onCommand:minimalArduino.newSketch"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -134,7 +129,34 @@
           "when": "resourceExtname == .ino"
         }
       ]
-    }
+    },
+
+    "keybindings": [
+  {
+    "command": "minimalArduino.newSketch",
+    "key": "ctrl+alt+n",
+    "mac": "cmd+alt+n",
+    "when": "editorTextFocus"
+  },
+  {
+    "command": "minimalArduino.compile",
+    "key": "ctrl+alt+b",
+    "mac": "cmd+alt+b",
+    "when": "resourceExtname == .ino"
+  },
+  {
+    "command": "minimalArduino.upload",
+    "key": "ctrl+alt+u",
+    "mac": "cmd+alt+u",
+    "when": "resourceExtname == .ino"
+  },
+  {
+    "command": "minimalArduino.serialMonitor",
+    "key": "ctrl+alt+m",
+    "mac": "cmd+alt+m",
+    "when": "resourceExtname == .ino"
+  }
+  ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
