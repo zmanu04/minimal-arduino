@@ -3,7 +3,7 @@
   "displayName": "Minimal Arduino",
   "publisher": "zmanu",
   "description": "Custom lightweight Arduino IDE extension with IntelliSense and Sidebar Management",
-  "version": "0.1.4",
+  "version": "0.0.5",
   "repository": {
     "type": "git",
     "url": "https://github.com/zmanul/minimal-arduino.git"

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 // --- GLOBAL VARIABLES ---
 let currentBoard = "";
@@ -24,11 +25,11 @@ function runCommandAsync(command: string): Promise<string> {
     });
 }
 
-// --- 2. INTELLISENSE (GÉNÉRATION DU FICHIER PHYSIQUE BLINDÉ) ---
+// --- 2. INTELLISENSE (BULLETPROOF GENERATION) ---
 async function updateIntellisenseConfig(fqbn: string) {
     const cli = getCliPath();
     
-    // Détection du dossier
+    // Detect Workspace
     let rootPath = "";
     if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
         rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -72,32 +73,49 @@ async function updateIntellisenseConfig(fqbn: string) {
             }
         }
 
-        // The massive net of all possible folders
+        // --- BULLETPROOF PATH RESOLUTION ---
+        const homeDir = cleanPath(os.homedir());
         const rawIncludePaths = [
             `${rootPath}/**`,
             `${corePath}/**`,
             `${variantPath}/**`,
             `${platformPath}/libraries/**`,
-            cleanPath(process.env.USERPROFILE || '') + "/Documents/Arduino/libraries/**",
-            cleanPath(process.env.USERPROFILE || '') + "/OneDrive/Documents/Arduino/libraries/**", // Added OneDrive support!
-            `${compilerBaseDir}/avr/include/**`,
-            `${compilerBaseDir}/arm-none-eabi/include/**`,
-            `${compilerBaseDir}/lib/gcc/**`
+            `${homeDir}/Documents/Arduino/libraries/**`,
+            `${homeDir}/OneDrive/Documents/Arduino/libraries/**`
         ];
 
-        // MAGIC FILTER: Only keep the paths if the folder actually exists on the hard drive
+        // DYNAMIC TOOLCHAIN SCANNER (Finds the hidden compiler folders regardless of architecture)
+        if (fs.existsSync(compilerBaseDir)) {
+            const subdirs = fs.readdirSync(compilerBaseDir);
+            for (const dir of subdirs) {
+                const includeTarget = path.join(compilerBaseDir, dir, 'include');
+                if (fs.existsSync(includeTarget)) {
+                    rawIncludePaths.push(`${cleanPath(includeTarget)}/**`);
+                }
+            }
+            const gccLibPath = path.join(compilerBaseDir, 'lib', 'gcc');
+            if (fs.existsSync(gccLibPath)) rawIncludePaths.push(`${cleanPath(gccLibPath)}/**`);
+        }
+
+        // Filter out folders that don't exist to prevent VS Code warnings
         const includePaths = rawIncludePaths.filter(p => {
             const baseDir = p.replace('/**', '');
             return fs.existsSync(baseDir);
         });
 
-        let intellisenseMode = "windows-gcc-x64";
-        if (fullCompilerPath.toLowerCase().includes("arm")) intellisenseMode = "windows-gcc-arm";
+        // --- SMART ARCHITECTURE MAPPING ---
+        const arch = (props["build.arch"] || "").toLowerCase();
+        let intellisenseMode = "windows-gcc-x64"; // Default fallback
+        if (arch.includes("arm") || arch.includes("samd") || arch.includes("rp2040") || fullCompilerPath.toLowerCase().includes("arm")) {
+            intellisenseMode = "windows-gcc-arm";
+        } else if (arch.includes("avr")) {
+            intellisenseMode = "windows-gcc-x86"; // 8-bit AVRs are closer to x86 constraints
+        }
 
         const mcu = props["build.mcu"];
         const compilerArgs = mcu ? [`-mmcu=${mcu}`] : [];
 
-        // CRÉATION DE LA CONFIGURATION PARFAITE
+        // BUILD THE PERFECT CONFIG
         const config = {
             configurations: [{
                 name: "Minimal Arduino",
@@ -119,26 +137,18 @@ async function updateIntellisenseConfig(fqbn: string) {
         };
 
         if (!fs.existsSync(vscodeFolder)) fs.mkdirSync(vscodeFolder, { recursive: true });
-        
-        // Écriture du fichier c_cpp_properties.json
         fs.writeFileSync(path.join(vscodeFolder, 'c_cpp_properties.json'), JSON.stringify(config, null, 4));
 
-        // Nettoyage et configuration du settings.json
         const settingsPath = path.join(vscodeFolder, 'settings.json');
         let settings: any = {};
         if (fs.existsSync(settingsPath)) settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
         
         if (!settings["files.associations"]) settings["files.associations"] = {};
         settings["files.associations"]["*.ino"] = "cpp";
-        
-        // On supprime notre ancienne tentative de prise de contrôle (très important !)
-        if (settings["C_Cpp.default.customConfigurationProvider"]) {
-            delete settings["C_Cpp.default.customConfigurationProvider"];
-        }
+        if (settings["C_Cpp.default.customConfigurationProvider"]) delete settings["C_Cpp.default.customConfigurationProvider"];
 
         fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4));
-
-        vscode.window.showInformationMessage(`IntelliSense OK! .vscode généré.`);
+        vscode.window.showInformationMessage(`IntelliSense OK! Hardware mapped to ${arch.toUpperCase() || "Default"}.`);
 
     } catch (e: any) {
         vscode.window.showErrorMessage(`IntelliSense Error: ${e.message}`);
@@ -211,13 +221,29 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerTreeDataProvider('minimalArduino.libsView', libProvider);
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("minimalArduino.selectBoard", async () => { /* ... (Garde ta fonction de recherche) ... */ }),
+        vscode.commands.registerCommand("minimalArduino.selectBoard", async () => {
+            const cli = getCliPath();
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Loading boards..." }, async () => {
+                try {
+                    const stdout = await runCommandAsync(`"${cli}" board listall`);
+                    const items = stdout.split('\n').slice(1).filter(l => l.trim().length > 0).map(l => {
+                        const p = l.trim().split(/\s{2,}/);
+                        return { label: p[0], description: p[1] };
+                    });
+
+                    const sel = await vscode.window.showQuickPick(items, { placeHolder: "Search Arduino boards..." });
+                    if (sel) vscode.commands.executeCommand("minimalArduino.setBoard", sel.description);
+                } catch (e) {
+                    vscode.window.showErrorMessage("Failed to search boards. Is arduino-cli installed?");
+                }
+            });
+        }),
 
         vscode.commands.registerCommand("minimalArduino.setBoard", async (fqbn: string) => {
             currentBoard = fqbn;
             await context.workspaceState.update("lastBoard", fqbn);
             statusBarBoard.text = `$(circuit-board) ${fqbn}`;
-            await updateIntellisenseConfig(fqbn); // Déclenche la création du JSON
+            await updateIntellisenseConfig(fqbn);
         }),
 
         vscode.commands.registerCommand("minimalArduino.autoDetect", () => {
@@ -226,14 +252,52 @@ export function activate(context: vscode.ExtensionContext) {
 
         vscode.commands.registerCommand("minimalArduino.compile", () => runCliTask("compile")),
         vscode.commands.registerCommand("minimalArduino.upload", () => runCliTask("upload")),
-        vscode.commands.registerCommand("minimalArduino.searchLibrary", async () => { /* ... (Garde ta fonction de lib) ... */ })
+        
+        vscode.commands.registerCommand("minimalArduino.searchLibrary", async () => {
+            const cli = getCliPath();
+            const query = await vscode.window.showInputBox({ prompt: "Search for an Arduino Library" });
+            if (!query) return;
+
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Searching for "${query}"...`, cancellable: false }, async () => {
+                try {
+                    const stdout = await runCommandAsync(`"${cli}" lib search "${query}" --format json`);
+                    const result = JSON.parse(stdout);
+                    const libs = result.libraries || [];
+
+                    if (libs.length === 0) {
+                        vscode.window.showInformationMessage(`No library found for "${query}".`);
+                        return;
+                    }
+
+                    const items: vscode.QuickPickItem[] = libs.map((lib: any) => ({
+                        label: lib.name || "Unknown",
+                        description: lib.author || "",
+                        detail: lib.sentence || ""
+                    }));
+
+                    const selection = await vscode.window.showQuickPick(items, { placeHolder: "Select a library to install", matchOnDetail: true });
+
+                    if (selection) {
+                        vscode.window.showInformationMessage(`Installing ${selection.label}...`);
+                        await runCommandAsync(`"${cli}" lib install "${selection.label}"`);
+                        vscode.window.showInformationMessage(`${selection.label} installed successfully!`);
+                        libProvider.refresh();
+                    }
+                } catch (e) {
+                    vscode.window.showErrorMessage("Library search failed.");
+                }
+            });
+        })
     );
 }
 
 async function runCliTask(action: string) {
     const cli = getCliPath();
     const editor = vscode.window.activeTextEditor;
-    if (!editor || !currentBoard) return;
+    if (!editor || !currentBoard) {
+        vscode.window.showErrorMessage("Please open a .ino file and select a board.");
+        return;
+    }
     const terminal = vscode.window.createTerminal(`Arduino ${action}`);
     terminal.show();
     let command = `& "${cli}" ${action} --fqbn ${currentBoard} "${path.dirname(editor.document.fileName)}"`;
