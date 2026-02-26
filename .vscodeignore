@@ -1,6 +1,6 @@
 .vscode/**
 .vscode-test/**
+out/*.map
+node_modules/**
 src/**
 tsconfig.json
-vsc-extension-quickstart.md
-.gitignore

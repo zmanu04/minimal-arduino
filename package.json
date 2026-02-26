@@ -2,32 +2,40 @@
   "name": "minimal-arduino",
   "displayName": "Minimal Arduino",
   "publisher": "zmanu",
-  "description": "Custom lightweight Arduino IDE extension",
-  "version": "0.0.3",
+  "description": "Custom lightweight Arduino IDE extension with IntelliSense and Sidebar Management",
+  "version": "0.1.4",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zmanu04/minimal-arduino.git"
+    "url": "https://github.com/zmanul/minimal-arduino.git"
   },
   "engines": {
     "vscode": "^1.80.0"
   },
   "extensionDependencies": [
-    "ms-vscode.vscode-serial-monitor"
+    "ms-vscode.vscode-serial-monitor",
+    "ms-vscode.cpptools"
   ],
   "categories": [
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
+
     "configuration": {
+      "configurationDefaults": {
+      "files.associations": {
+        "*.ino": "cpp"
+        }
+      },
       "title": "Minimal Arduino",
       "properties": {
         "minimalArduino.cliPath": {
           "type": "string",
           "default": "",
-          "description": "The absolute path to your arduino-cli executable (e.g., C:\\Program Files\\arduino-cli\\arduino-cli.exe)"
+          "description": "The absolute path to your arduino-cli executable. Leave empty to auto-detect via %PATH%."
         }
       }
     },
@@ -87,7 +95,8 @@
       },
       {
         "command": "minimalArduino.selectBoard",
-        "title": "Search Boards"
+        "title": "Search Boards",
+        "icon": "$(search)"
       },
       {
         "command": "minimalArduino.setBoard",
@@ -100,6 +109,41 @@
       {
         "command": "minimalArduino.installLib",
         "title": "Install Library"
+      },
+      {
+        "command": "minimalArduino.refreshIntellisense",
+        "title": "Refresh C/C++ IntelliSense"
+      },
+      {
+        "command": "minimalArduino.searchLibrary",
+        "title": "Search & Install Library",
+        "icon": "$(search)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "minimalArduino.newSketch",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "minimalArduino.compile",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b",
+        "when": "resourceExtname == .ino"
+      },
+      {
+        "command": "minimalArduino.upload",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u",
+        "when": "resourceExtname == .ino"
+      },
+      {
+        "command": "minimalArduino.serialMonitor",
+        "key": "ctrl+alt+m",
+        "mac": "cmd+alt+m",
+        "when": "resourceExtname == .ino"
       }
     ],
     "menus": {
@@ -128,48 +172,39 @@
           "group": "navigation@4",
           "when": "resourceExtname == .ino"
         }
+      ],
+      "view/title": [
+        {
+          "command": "minimalArduino.selectBoard",
+          "when": "view == minimalArduino.boardsView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "minimalArduino.autoDetect",
+          "when": "view == minimalArduino.boardsView || view == minimalArduino.portsView || view == minimalArduino.libsView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "minimalArduino.searchLibrary",
+          "when": "view == minimalArduino.libsView",
+          "group": "navigation@1"
+        }
       ]
-    },
-
-    "keybindings": [
-  {
-    "command": "minimalArduino.newSketch",
-    "key": "ctrl+alt+n",
-    "mac": "cmd+alt+n",
-    "when": "editorTextFocus"
-  },
-  {
-    "command": "minimalArduino.compile",
-    "key": "ctrl+alt+b",
-    "mac": "cmd+alt+b",
-    "when": "resourceExtname == .ino"
-  },
-  {
-    "command": "minimalArduino.upload",
-    "key": "ctrl+alt+u",
-    "mac": "cmd+alt+u",
-    "when": "resourceExtname == .ino"
-  },
-  {
-    "command": "minimalArduino.serialMonitor",
-    "key": "ctrl+alt+m",
-    "mac": "cmd+alt+m",
-    "when": "resourceExtname == .ino"
-  }
-  ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
-    "watch": "npm run compile -- --watch"
+    "compile": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch"
   },
   "devDependencies": {
     "@types/node": "18.x",
     "@types/vscode": "^1.80.0",
-    "esbuild": "^0.27.3",
-    "typescript": "^5.1.3"
+    "esbuild": "^0.20.0",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@microsoft/vscode-serial-monitor-api": "latest"
+    "@microsoft/vscode-serial-monitor-api": "latest",
+    "vscode-cpptools": "^7.1.1"
   }
 }
