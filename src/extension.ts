@@ -8,6 +8,7 @@ import * as os from 'os';
 let currentBoard = "";
 let currentPort = "";
 let statusBarBoard: vscode.StatusBarItem;
+let statusBarPort: vscode.StatusBarItem;
 
 // --- 1. DYNAMIC PATH CONFIGURATION ---
 function getCliPath(): string {
@@ -80,6 +81,7 @@ async function updateIntellisenseConfig(fqbn: string) {
             `${corePath}/**`,
             `${variantPath}/**`,
             `${platformPath}/libraries/**`,
+            `${platformPath}/tools/sdk/**`, // For ESP32 SDK includes
             `${homeDir}/Documents/Arduino/libraries/**`,
             `${homeDir}/OneDrive/Documents/Arduino/libraries/**`
         ];
@@ -175,6 +177,13 @@ class ArduinoItem extends vscode.TreeItem {
                 arguments: [this.actionValue]
             };
         }
+        if (this.iconName === "plug" && this.actionValue) {
+            this.command = {
+                command: "minimalArduino.setPort",
+                title: "Select Port",
+                arguments: [this.actionValue]
+            };
+        }
     }
 }
 
@@ -206,11 +215,15 @@ class ArduinoProvider implements vscode.TreeDataProvider<ArduinoItem> {
 // --- 4. ACTIVATION & COMMANDS ---
 export function activate(context: vscode.ExtensionContext) {
     statusBarBoard = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    statusBarPort = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
     currentBoard = context.workspaceState.get<string>("lastBoard", "");
     currentPort = context.workspaceState.get<string>("lastPort", "");
     
     statusBarBoard.text = `$(circuit-board) ${currentBoard || "Select Board"}`;
     statusBarBoard.show();
+
+    statusBarPort.text = `$(plug) ${currentPort || "Select Port"}`;
+    statusBarPort.show();
 
     const boardProvider = new ArduinoProvider('boards');
     const portProvider = new ArduinoProvider('ports');
@@ -246,8 +259,48 @@ export function activate(context: vscode.ExtensionContext) {
             await updateIntellisenseConfig(fqbn);
         }),
 
+        vscode.commands.registerCommand("minimalArduino.setPort", async (port: string) => {
+            currentPort = port;
+            await context.workspaceState.update("lastPort", port);
+            statusBarPort.text = `$(plug) ${port}`;
+        }),
+
         vscode.commands.registerCommand("minimalArduino.autoDetect", () => {
             boardProvider.refresh(); portProvider.refresh(); libProvider.refresh();
+        }),
+        vscode.commands.registerCommand("minimalArduino.newSketch", async () => {
+            const sketchName = await vscode.window.showInputBox({ 
+                prompt: "Name your new Arduino sketch (no spaces):",
+                placeHolder: "MyAwesomeProject" 
+            });
+            
+            if (!sketchName) return;
+
+            // Find where to put it
+            let rootPath = "";
+            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+            } else {
+                vscode.window.showErrorMessage("Please open a folder in VS Code first!");
+                return;
+            }
+
+            const sketchDir = path.join(rootPath, sketchName);
+            const sketchFile = path.join(sketchDir, `${sketchName}.ino`);
+
+            if (fs.existsSync(sketchDir)) {
+                vscode.window.showErrorMessage(`A folder named "${sketchName}" already exists!`);
+                return;
+            }
+
+            // Create the folder and the .ino file
+            fs.mkdirSync(sketchDir, { recursive: true });
+            const templateCode = `void setup() {\n  // put your setup code here, to run once:\n\n}\n\nvoid loop() {\n  // put your main code here, to run repeatedly:\n\n}\n`;
+            fs.writeFileSync(sketchFile, templateCode);
+
+            // Open the new file in the editor automatically
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(sketchFile));
+            vscode.window.showTextDocument(doc);
         }),
 
         vscode.commands.registerCommand("minimalArduino.compile", () => runCliTask("compile")),
@@ -280,8 +333,13 @@ export function activate(context: vscode.ExtensionContext) {
                     if (selection) {
                         vscode.window.showInformationMessage(`Installing ${selection.label}...`);
                         await runCommandAsync(`"${cli}" lib install "${selection.label}"`);
-                        vscode.window.showInformationMessage(`${selection.label} installed successfully!`);
+                        vscode.window.showInformationMessage(`${selection.label} installed successfully! Updating IntelliSense...`);
                         libProvider.refresh();
+                        
+                        // MAGIC FIX: Auto-update the C++ paths if a board is currently selected
+                        if (currentBoard) {
+                            await updateIntellisenseConfig(currentBoard);
+                        }
                     }
                 } catch (e) {
                     vscode.window.showErrorMessage("Library search failed.");
@@ -298,10 +356,26 @@ async function runCliTask(action: string) {
         vscode.window.showErrorMessage("Please open a .ino file and select a board.");
         return;
     }
-    const terminal = vscode.window.createTerminal(`Arduino ${action}`);
+    
+    let terminal = vscode.window.terminals.find(t => t.name === 'Arduino');
+    if (!terminal) {
+        terminal = vscode.window.createTerminal(`Arduino`);
+    }
     terminal.show();
-    let command = `& "${cli}" ${action} --fqbn ${currentBoard} "${path.dirname(editor.document.fileName)}"`;
-    if (action === "upload" && currentPort) command += ` -p ${currentPort}`;
+    
+    // MAGIC FIX: If the user wants to upload, tell the CLI to compile AND upload
+    let cliAction = action;
+    if (action === "upload") {
+        cliAction = "compile --upload";
+    }
+
+    let command = `& "${cli}" ${cliAction} --fqbn ${currentBoard} "${path.dirname(editor.document.fileName)}"`;
+    
+    // Add the port flag if we are uploading
+    if (action === "upload" && currentPort) {
+        command += ` -p ${currentPort}`;
+    }
+    
     terminal.sendText(command);
 }
 
