@@ -382,6 +382,26 @@ async function updateIntellisenseConfig(fqbn: string) {
             }
         }
 
+        // Add built-in hardware libraries (e.g., ESP32 WiFi, SPI, Wire)
+        if (runtimePlatformPath) {
+            const hwLibsDir = path.join(runtimePlatformPath, 'libraries');
+            if (fs.existsSync(hwLibsDir)) {
+                try {
+                    const hwLibs = fs.readdirSync(hwLibsDir, { withFileTypes: true });
+                    for (const hwLib of hwLibs) {
+                        if (hwLib.isDirectory()) {
+                            const libRoot = path.join(hwLibsDir, hwLib.name);
+                            includePaths.push(libRoot);
+                            const srcPath = path.join(libRoot, 'src');
+                            if (fs.existsSync(srcPath)) {
+                                includePaths.push(srcPath);
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
+        }
+
         // Find all library paths
         const libResponse = await runCommand(`${cli} lib list --format json`);
         const parsedLibs = parseJsonOutput(libResponse);
