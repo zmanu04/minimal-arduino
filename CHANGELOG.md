@@ -6,4 +6,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-- Initial release
+## [0.0.6]
+
+- Fixed missing C/C++ includes for complex architectures (ESP32 / FreeRTOS).
+- Made IntelliSense auto-configuration fully cross-platform (Windows/Mac/Linux).
+- Added automatic compilation check before uploading code.
+- Integrated dynamic built-in hardware library detection.

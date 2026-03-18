@@ -364,8 +364,8 @@ async function updateIntellisenseConfig(fqbn: string) {
             if (flag === '-iprefix') {
                 currentPrefix = val;
             } else if (flag === '-iwithprefixbefore') {
-                const safeVal = val.trim().replace(/^[\\\/]+/, ''); // Prevent absolute path override on Windows
-                const fullPath = currentPrefix ? path.join(currentPrefix, safeVal) : val;
+                const safeVal = currentPrefix ? val.trim().replace(/^[\\\/]+/, '') : val.trim(); // Only strip slash if we are appending
+                const fullPath = currentPrefix ? path.join(currentPrefix, safeVal) : safeVal;
                 if (fullPath && !includePaths.includes(fullPath)) {
                     includePaths.push(fullPath);
                 }
@@ -476,14 +476,21 @@ async function updateIntellisenseConfig(fqbn: string) {
           }
         }
 
+        // Dynamically set IntelliSense mode based on the user's Operating System
+        let currentIntelliSenseMode = 'linux-gcc-x64';
+        if (process.platform === 'win32') {
+            currentIntelliSenseMode = 'windows-gcc-x64';
+        } else if (process.platform === 'darwin') {
+            currentIntelliSenseMode = 'macos-gcc-x64';
+        }
+
         const config = {
           configurations: [
             {
               name: 'Minimal Arduino',
               compilerPath: compilerPathStr,
               compilerArgs,
-              intelliSenseMode:
-                'windows-gcc-x64',
+              intelliSenseMode: currentIntelliSenseMode,
               includePath: [...new Set([...includePaths.filter(p => fs.existsSync(p)), ...recursiveIncludes])],
               forcedInclude: [...new Set(forcedIncludes)],
               defines,
