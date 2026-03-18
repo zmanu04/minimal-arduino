@@ -74,6 +74,14 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "minimalArduino.coreUpdate",
+        "title": "Arduino: Core Update"
+      },
+      {
+        "command": "minimalArduino.installCore",
+        "title": "Arduino: Install Core"
+      },
+      {
         "command": "minimalArduino.compile",
         "title": "Verify / Compile",
         "icon": "$(check)"
@@ -107,17 +115,19 @@
         "title": "Set Port"
       },
       {
-        "command": "minimalArduino.installLib",
-        "title": "Install Library"
-      },
-      {
-        "command": "minimalArduino.refreshIntellisense",
-        "title": "Refresh C/C++ IntelliSense"
-      },
-      {
         "command": "minimalArduino.searchLibrary",
         "title": "Search & Install Library",
         "icon": "$(search)"
+      },
+      {
+        "command": "minimalArduino.addLibrary",
+        "title": "Add Library",
+        "icon": "$(add)"
+      },
+      {
+        "command": "minimalArduino.configureBoard",
+        "title": "Configure Board Options",
+        "icon": "$(settings-gear)"
       }
     ],
     "keybindings": [
@@ -188,20 +198,29 @@
           "command": "minimalArduino.searchLibrary",
           "when": "view == minimalArduino.libsView",
           "group": "navigation@1"
-        }
+        },
+		{
+			"command": "minimalArduino.addLibrary",
+			"when": "view == minimalArduino.libsView",
+			"group": "navigation@2"
+		}
       ]
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
-    "watch": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch"
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "compile-tests": "esbuild ./src/test/**/*.ts --outdir=out/test --external:vscode --format=cjs --platform=node",
+    "test": "npm run compile-tests && vscode-test"
   },
   "devDependencies": {
     "@types/node": "18.x",
     "@types/vscode": "^1.80.0",
     "esbuild": "^0.20.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "@vscode/test-cli": "^0.0.9",
+    "@types/mocha": "^10.0.6"
   },
   "dependencies": {
     "@microsoft/vscode-serial-monitor-api": "latest",
